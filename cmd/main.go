@@ -8,7 +8,8 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/", handler.isValid)
+	http.HandleFunc("/", handler.IsValid)
+	http.HandleFunc("/insert", handler.Insert)
 	err := http.ListenAndServe(":3333", nil)
 	if err != nil {
 		if err == http.ErrServerClosed {

@@ -2,8 +2,11 @@ package shortener
 
 import (
 	"database/sql"
-	"fmt"
+	"errors"
 	"log"
+	"module_name/encrypt/encrypt"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var db *sql.DB
@@ -18,18 +21,16 @@ func init() {
 
 func Connect() (*sql.DB, error) {
 
-	db, err := sql.Open("sqlite3", "./database/sqlite3.db")
+	db, err := sql.Open("sqlite3", "pkg/database/sqlite3.db")
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
-
-	//Create table if required
 
 	_, err = db.Exec(`
     CREATE TABLE IF NOT EXISTS links (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        url TEXT
+        url TEXT,
+        shorted TEXT
     )
 `)
 	if err != nil {
@@ -38,34 +39,60 @@ func Connect() (*sql.DB, error) {
 	return db, nil
 }
 
-func Get() error {
-	rows, err := db.Query("SELECT id, url FROM links")
+func Get(short string) (string, error) {
+	rows, err := db.Query("SELECT id, url,shorted FROM links")
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var id int
-		var url string
-		if err = rows.Scan(&id, &url); err != nil {
-			return err
+		var url, shorted string
+		if err = rows.Scan(&id, &url, &shorted); err != nil {
+			return "", err
 		}
-		fmt.Println("ID:", id, "URL:", url)
+		if shorted == short {
+			return url, nil
+		}
 	}
-	return nil
+	return "", errors.New("Something went wrong")
 }
 
-func Insert(link string) error {
-	stmt, err := db.Prepare("INSERT INTO links(url) VALUES(?)")
+func Insert(link string) (string, error) {
+	stmt, err := db.Prepare("INSERT INTO links(url,shorted) VALUES(?,?)")
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer stmt.Close()
-
-	_, err = stmt.Exec(link)
+	last, err := Last()
 	if err != nil {
-		return err
+		return "", err
 	}
-	return nil
+	short := encrypt.Encrypt(last)
+	_, err = stmt.Exec(link, short)
+	if err != nil {
+		return "", err
+	}
+	return short, nil
+}
+
+func Last() (string, error) {
+	rows, err := db.Query("SELECT id, url,shorted FROM links")
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	var id int
+	var url string
+	shorted := "A"
+	for rows.Next() {
+		if err = rows.Scan(&id, &url, &shorted); err != nil {
+			return "", err
+		}
+	}
+	if shorted == "A" {
+		shorted = "a"
+	}
+	return shorted, nil
 }
